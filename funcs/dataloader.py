@@ -22,9 +22,9 @@ def load_dataset(input_n=10,output_n=25,skip_rate=1, batch_size=256):
     vald_dataset = datasets.Datasets(PATH,input_n,output_n,skip_rate, split=1)
 
     print('>>> Training dataset length: {:d}'.format(dataset.__len__()))
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)#
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)#
 
     print('>>> Validation dataset length: {:d}'.format(vald_dataset.__len__()))
-    vald_loader = DataLoader(vald_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+    vald_loader = DataLoader(vald_dataset, batch_size=batch_size, num_workers=2, pin_memory=True)
 
     return data_loader, vald_loader
