@@ -1,6 +1,6 @@
 import torch.nn as nn
 from .sta_block import STA_Block
-
+from bayesian_torch.layers import LinearReparameterization as LinearBayes, Conv1dReparameterization as Conv1dBayes
 
 def conv_init(conv):
     nn.init.kaiming_normal_(conv.weight, mode='fan_out')
@@ -15,7 +15,7 @@ def fc_init(fc):
     nn.init.constant_(fc.bias, 0)
 
 
-class STTFormer(nn.Module):
+class STTFormerBayes(nn.Module):
     def __init__(self, num_joints, 
                  num_frames, num_frames_out, num_heads, num_channels, 
                  kernel_size, len_parts=1, use_pes=True, config=None, num_persons=1,
@@ -54,9 +54,9 @@ class STTFormer(nn.Module):
                                          use_pes=use_pes,
                                          att_drop=att_drop))   
             
-        # TO REPLACE WITH BNN 
-        self.fc_out = nn.Linear(66, 66)
-        self.conv_out = nn.Conv1d(num_frames, num_frames_out, 1, stride=1)
+        # REPLACED WITH BNN 
+        self.fc_out = LinearBayes(66, 66)
+        self.conv_out = Conv1dBayes(num_frames, num_frames_out, 1, stride=1)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 conv_init(m)
@@ -77,7 +77,8 @@ class STTFormer(nn.Module):
         for _, block in enumerate(self.blocks):
             x = block(x)
 
-            
-        out = self.fc_out(self.conv_out(x.reshape(-1, self.num_frames, self.num_joints*self.num_channels)))  
-        
-        return out
+        x = x.reshape(-1, self.num_frames, self.num_joints*self.num_channels)
+        x = self.conv_out(x, return_kl = False)
+        x = self.fc_out(x, return_kl = False)  
+
+        return x
