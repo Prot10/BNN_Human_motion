@@ -5,6 +5,7 @@ from .sttformer import STTFormerBayes
 from ..utils.loss_funcs import mpjpe_error
 import numpy as np 
 import torch
+from bayesian_torch.models.dnn_to_bnn import get_kl_loss
 
 input_n  =10 # number of frames to train on (default=10)
 output_n =25 # number of frames to predict on
@@ -13,7 +14,7 @@ skip_rate=1  # skip rate of frames
 joints_to_consider=22
 lr = 1e-01 # learning rate
 use_scheduler=True # use MultiStepLR scheduler
-milestones=[10,20,30]   # the epochs after which the learning rate is adjusted by gamma
+milestones=[5,10,15,20,25,30]   # the epochs after which the learning rate is adjusted by gamma
 gamma=0.1 #gamma correction to the learning rate, after reaching the milestone epochs
 weight_decay=1e-05 # weight decay (L2 penalty)
 dim_used = np.array([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
@@ -31,8 +32,10 @@ class LitSTTFormerBayes(L.LightningModule):
     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
         loss = self.step(batch)
-        self.log('training loss:', loss)
-        return loss
+        kl_loss = get_kl_loss(self.transformer)
+        self.log('training_loss', loss)
+        self.log('KL_divergence', kl_loss)
+        return loss + kl_loss / batch.shape[0]
     
     def step(self, batch) -> torch.Tensor:
         batch = batch.float()
@@ -53,7 +56,7 @@ class LitSTTFormerBayes(L.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         loss = self.step(batch)
-        self.log('validation loss:', loss)
+        self.log('validation_loss', loss)
 
     # def optimizer_step(self, epoch: int, batch_idx: int, optimizer: Optimizer | LightningOptimizer, optimizer_closure: Callable[[], Any] | None = None) -> None:
     #     if clip_grad is not None:
