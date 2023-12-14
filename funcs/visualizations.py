@@ -10,9 +10,9 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
-from utils import h36motion3d as datasets
-from utils.loss_funcs import mpjpe_error
-from utils.data_utils import define_actions
+from .utils import h36motion3d as datasets
+from .utils.loss_funcs import mpjpe_error
+from .utils.data_utils import define_actions
 
 def create_pose(ax,plots,vals,pred=True,update=False):
 

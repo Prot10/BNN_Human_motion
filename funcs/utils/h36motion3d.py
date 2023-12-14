@@ -1,8 +1,8 @@
 from torch.utils.data import Dataset
 import numpy as np
-from h5py import File
+# from h5py import File
 import scipy.io as sio
-from utils import data_utils
+from . import data_utils
 from matplotlib import pyplot as plt
 import torch
 
@@ -27,7 +27,7 @@ class Datasets(Dataset):
         self.p3d = {}
         self.data_idx = []
         seq_len = self.in_n + self.out_n
-        subs = np.array([[1, 6, 7, 8, 9], [11], [5]]) # , 6, 7, 8, 9
+        subs = [[1, 6, 7, 8, 9], [11], [5]] # , 6, 7, 8, 9
         # acts = data_utils.define_actions(actions)
         if actions is None:
             acts = ["walking", "eating", "smoking", "discussion", "directions",
