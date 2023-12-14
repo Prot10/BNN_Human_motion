@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from Embed import DataEmbedding_wo_pos_tem
-from AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
-from Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_Layernorm, series_decomp
+from .Embed import DataEmbedding_wo_pos_tem
+from .AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
+from .Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_Layernorm, series_decomp
 import math
 import numpy as np
 
@@ -98,7 +98,7 @@ class Model(nn.Module):
         dec_out = trend_part + seasonal_part
 
         if self.output_attention:
-            return dec_out[:, -self.pred_len:, :], attns, kl
+            return dec_out[:, -self.pred_len:, :], attns, kl/dec_out.size(0)
         else:
-            return dec_out[:, -self.pred_len:, :], kl  # [B, L, D]
+            return dec_out[:, -self.pred_len:, :], kl/dec_out.size(0)  # [B, L, D]
 
