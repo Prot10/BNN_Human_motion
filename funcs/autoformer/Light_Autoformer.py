@@ -11,11 +11,7 @@ output_n=25 # number of frames to predict on
 input_dim=3  # dimensions of the input coordinates(default=3)
 skip_rate=1  # skip rate of frames
 joints_to_consider=22
-lr = 1e-04 # learning rate
 use_scheduler=True # use MultiStepLR scheduler
-milestones=[10,20,30]   # the epochs after which the learning rate is adjusted by gamma
-gamma=0.1 #gamma correction to the learning rate, after reaching the milestone epochs
-weight_decay=1e-07 # weight decay (L2 penalty)
 dim_used = np.array([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
                     26, 27, 28, 29, 30, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
                     46, 47, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63, 64, 65, 66, 67, 68,
@@ -24,6 +20,7 @@ dim_used = np.array([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24,
 class LitAutoformer(L.LightningModule):
     def __init__(self, configs) -> None:
         super().__init__()
+        self.configs=configs
         self.autoformer = autoformer(configs)
 
     def forward(self, x) -> Any:
@@ -48,8 +45,8 @@ class LitAutoformer(L.LightningModule):
 
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay)
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.configs.lr, weight_decay=self.configs.weight_decay)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.configs.milestones, gamma=self.configs.gamma)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
     
     def validation_step(self, batch, batch_idx):
