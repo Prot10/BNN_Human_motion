@@ -1,9 +1,10 @@
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, Tuple
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from .sttformer import STTFormerBayes
 from ..utils.loss_funcs import mpjpe_error
 import numpy as np 
+import scipy 
 import torch
 from bayesian_torch.models.dnn_to_bnn import get_kl_loss
 
@@ -26,10 +27,32 @@ class LitSTTFormerBayes(L.LightningModule):
     def __init__(self, **kwargs) -> None:
         super().__init__()
         self.transformer = STTFormerBayes(**kwargs)
+        self.repetitions = 1000
 
     def forward(self, x) -> Any:
-        return self.transformer.forward(x)
+        sequences_train = x[:, 0:input_n, dim_used].view(-1,input_n,len(dim_used)//3,3).permute(0,3,1,2)
+        sequences_predict = self.transformer.forward(sequences_train).view(-1, output_n, joints_to_consider, 3)
+        return sequences_predict
     
+    def mvn_fit(self, x : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        y_samples = torch.stack([self.forward(x) for _ in range(self.repetitions)])
+        # sample is dimension 1000 x Batch x OutputFrames x Joints x 3
+        mu = y_samples.mean(dim=0, keepdim=True)
+        dev = y_samples - mu
+        S = torch.einsum('rbofi, rbofj -> bofij', dev, dev) / (self.repetitions-1)
+        return mu, S
+    
+    def build_ci(self, x: torch.Tensor, alpha:float=0.05, bonferroni:bool=True):
+        if bonferroni:
+            alpha = alpha/x.shape[-2]
+            # correct for the number of joints
+        y_samples = torch.stack([self.forward(x) for _ in range(self.repetitions)])
+        # sample is dimension 1000 x Batch x OutputFrames x Joints x 3
+        mu = y_samples.mean(dim=0, keepdim=True)
+        diff = (y_samples - mu)
+        dev = torch.linalg.vector_norm(diff, dim=-1)
+        return torch.quantile(dev, 1-alpha, dim=0)
+
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
         loss = self.step(batch)
         kl_loss = get_kl_loss(self.transformer)
@@ -49,11 +72,12 @@ class LitSTTFormerBayes(L.LightningModule):
 
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        deterministic_params = [p for p in self.parameters() if not hasattr(p, 'kl_loss')]
-        stochastic_params = [p for p in self.parameters() if hasattr(p, 'kl_loss')]
+        avoid_regularization = ['mu', 'rho', 'bias', '.1.weight', '.1.bias']
+        deterministic_params = [p for n,p in self.named_parameters() if all(p not in n for p in avoid_regularization)]
+        stochastic_params = [p for n,p in self.named_parameters() if any(p in n for p in avoid_regularization)]
         optimizer_params = [
             {'params': deterministic_params, 'weight_decay':weight_decay},
-            {'params': stochastic_params, 'weight_decay':0}
+            {'params': stochastic_params,    'weight_decay': 0 }
         ]
         optimizer = torch.optim.Adam(optimizer_params, lr=lr)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
