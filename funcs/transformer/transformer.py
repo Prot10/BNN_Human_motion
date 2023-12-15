@@ -49,7 +49,13 @@ class LitSTTFormerBayes(L.LightningModule):
 
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay)
+        deterministic_params = [p for p in self.parameters() if not hasattr(p, 'kl_loss')]
+        stochastic_params = [p for p in self.parameters() if hasattr(p, 'kl_loss')]
+        optimizer_params = [
+            {'params': deterministic_params, 'weight_decay':weight_decay},
+            {'params': stochastic_params, 'weight_decay':0}
+        ]
+        optimizer = torch.optim.Adam(optimizer_params, lr=lr)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
@@ -58,7 +64,4 @@ class LitSTTFormerBayes(L.LightningModule):
         loss = self.step(batch)
         self.log('validation_loss', loss)
 
-    # def optimizer_step(self, epoch: int, batch_idx: int, optimizer: Optimizer | LightningOptimizer, optimizer_closure: Callable[[], Any] | None = None) -> None:
-    #     if clip_grad is not None:
-    #         torch.nn.utils.clip_grad_norm_(self.transformer.parameters(),clip_grad)
-    #     optimizer.step()
+
