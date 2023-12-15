@@ -21,3 +21,11 @@ LR = [
         False, True, True, True, True,
         True, True
 ]
+
+joint_name = ["Hips", "RightUpLeg", "RightLeg", "RightFoot", "RightToeBase", "Site", "LeftUpLeg", "LeftLeg",
+                "LeftFoot",
+                "LeftToeBase", "Site", "Spine", "Spine1", "Neck", "Head", "Site", "LeftShoulder", "LeftArm",
+                "LeftForeArm",
+                "LeftHand", "LeftHandThumb", "Site", "L_Wrist_End", "Site", "RightShoulder", "RightArm",
+                "RightForeArm",
+                "RightHand", "RightHandThumb", "Site", "R_Wrist_End", "Site"]

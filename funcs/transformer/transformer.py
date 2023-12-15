@@ -42,7 +42,7 @@ class LitSTTFormerBayes(L.LightningModule):
         S = torch.einsum('rbofi, rbofj -> bofij', dev, dev) / (self.repetitions-1)
         return mu, S
     
-    def build_ci(self, x: torch.Tensor, alpha:float=0.05, bonferroni:bool=True):
+    def build_ci(self, x: torch.Tensor, alpha:float=0.1, bonferroni:bool=True):
         if bonferroni:
             alpha = alpha/x.shape[-2]
             # correct for the number of joints
