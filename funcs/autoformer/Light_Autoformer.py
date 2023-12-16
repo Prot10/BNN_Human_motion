@@ -28,7 +28,8 @@ class LitAutoformer(L.LightningModule):
         self.dec = bayes_dec(configs)
 
     def forward(self, x) -> Any:
-        return self.autoformer.forward(x)
+        seq, kl = self.dec.forward(*(self.autoformer.forward(x)))
+        return seq, kl/x.size(0)
     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
 
@@ -68,8 +69,21 @@ class LitAutoformer(L.LightningModule):
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.configs.milestones, gamma=self.configs.gamma)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'validation mpjpe'}
         
-    
+    @torch.no_grad
     def validation_step(self, batch, batch_idx):
-        loss,kl = self.step(batch)
-        self.log_dict({'validation mpjpe':loss,'kl':kl},on_step=True,on_epoch=True,prog_bar=True)
-        return loss
+        sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
+        sequences_gt=batch[:,input_n:,dim_used]
+        enc_s, enc_t = self.autoformer.forward(sequences_train)
+
+        kl_out = 0
+        seq = torch.zeros((batch.shape[0],self.configs.pred_len,self.configs.c_out)).to(batch.device)
+        for _ in range(self.configs.samples):
+            seq_run, kl = self.step(enc_s, enc_t)
+            seq += seq_run
+            kl_out += kl
+
+        mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
+        kl_out = kl_out/(self.configs.samples*batch.shape[0])          
+        self.log_dict({'validation mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
+
+        return mpjpe+kl_out
