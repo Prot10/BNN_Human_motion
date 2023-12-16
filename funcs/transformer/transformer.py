@@ -29,10 +29,13 @@ class LitSTTFormerBayes(L.LightningModule):
         self.transformer = STTFormerBayes(repetitions = repetitions, **kwargs)
         self.reps = repetitions
 
-    def forward(self, x) -> Any:
+    def forward(self, x, return_population=True) -> Any:
         sequences_train = x[:, 0:input_n, dim_used].view(-1,input_n,len(dim_used)//3,3).permute(0,3,1,2)
-        sequences_predict = self.transformer.forward(sequences_train).view(-1, output_n, joints_to_consider, 3)
-        return sequences_predict
+        sequences_predict = self.transformer.forward(sequences_train, return_population)
+        
+        if return_population:
+            return sequences_predict.view(self.reps, -1, output_n, joints_to_consider, 3)
+        return sequences_predict[0].view(-1, output_n, joints_to_consider, 3)
     
     @torch.no_grad
     def mvn_fit(self, x : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -48,7 +51,7 @@ class LitSTTFormerBayes(L.LightningModule):
         if bonferroni:
             alpha = alpha/x.shape[-2]
             # correct for the number of joints
-        y_samples = torch.stack([self.forward(x) for _ in range(self.reps)])
+        y_samples = self.forward(x, return_population=True)
         # sample is dimension 1000 x Batch x OutputFrames x Joints x 3
         mu = y_samples.mean(dim=0, keepdim=True)
         diff = (y_samples - mu)
