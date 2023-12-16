@@ -32,28 +32,27 @@ class LitAutoformer(L.LightningModule):
         return seq, kl/x.size(0)
     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
-
-        sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
+                                   # primo frame <- tutto a zero
+        sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),
+                                   # sottrai successivi ai precedenti e trovi lo spostamento step-by-step
+                                   batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
+        
         sequences_gt=batch[:,input_n:,dim_used]
+        # passagli le velocità
         enc_s, enc_t = self.autoformer.forward(sequences_train)
-
         kl_out = 0
         seq = torch.zeros((batch.shape[0],self.configs.pred_len,self.configs.c_out)).to(batch.device)
         for _ in range(self.configs.samples):
-            seq_run, kl = self.step(enc_s, enc_t)
+            seq_run, kl = self.dec.forward(enc_s, enc_t)
+            # al contrario, somma i precedenti ai successivi
+            seq_run[:,1:,:]=seq_run[:,1:,:]+seq_run[:,:output_n-1,:]
             seq += seq_run
             kl_out += kl
-
+                            # somma l'ultimo elemento dei train frames                            
         mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
         kl_out = kl_out/(self.configs.samples*batch.shape[0])          
         self.log_dict({'training mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
-
         return mpjpe+kl_out
-    
-    def step(self, enc_s, enc_t) -> torch.Tensor:
-        sequences_predict, kl = self.dec.forward(enc_s, enc_t)
-        sequences_predict[:,1:,:]=sequences_predict[:,1:,:]+sequences_predict[:,:output_n-1,:]
-        return sequences_predict, kl
 
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
@@ -78,7 +77,9 @@ class LitAutoformer(L.LightningModule):
         kl_out = 0
         seq = torch.zeros((batch.shape[0],self.configs.pred_len,self.configs.c_out)).to(batch.device)
         for _ in range(self.configs.samples):
-            seq_run, kl = self.step(enc_s, enc_t)
+            seq_run, kl = self.dec.forward(enc_s, enc_t)
+            # al contrario, somma i precedenti ai successivi
+            seq_run[:,1:,:]=seq_run[:,1:,:]+seq_run[:,:output_n-1,:]
             seq += seq_run
             kl_out += kl
 
