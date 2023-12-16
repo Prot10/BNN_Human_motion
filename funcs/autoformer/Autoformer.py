@@ -7,6 +7,16 @@ from .Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_
 import math
 import numpy as np
 
+def conv_init(conv):
+    nn.init.kaiming_normal_(conv.weight, mode='fan_out')
+
+def bn_init(bn, scale):
+    nn.init.constant_(bn.weight, scale)
+    nn.init.constant_(bn.bias, 0)
+
+def fc_init(fc):
+    nn.init.xavier_normal_(fc.weight)
+    nn.init.constant_(fc.bias, 0)
 
 class Model(nn.Module):
     """
@@ -77,6 +87,18 @@ class Model(nn.Module):
             norm_layer=my_Layernorm(configs.d_model),
             projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
         )
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                conv_init(m)
+            if isinstance(m, nn.Conv2d):
+                conv_init(m)
+            elif isinstance(m, nn.LayerNorm):
+                bn_init(m, 1)
+            elif isinstance(m, nn.Linear):
+                fc_init(m)
+            elif isinstance(m,nn.Parameter):
+                fc_init(m)
 
     def forward(self, x_enc, enc_self_mask=None,
                 dec_self_mask=None, dec_enc_mask=None):
