@@ -1,6 +1,8 @@
+from os import pidfd_open
 import torch.nn as nn
 from .sta_block import STA_Block
 from bayesian_torch.layers import LinearReparameterization as LinearBayes, Conv1dReparameterization as Conv1dBayes
+import torch
 
 def conv_init(conv):
     nn.init.kaiming_normal_(conv.weight, mode='fan_out')
@@ -19,8 +21,10 @@ class STTFormerBayes(nn.Module):
     def __init__(self, num_joints, 
                  num_frames, num_frames_out, num_heads, num_channels, 
                  kernel_size, len_parts=1, use_pes=True, config=None, num_persons=1,
-                 att_drop=0, dropout=0, dropout2d=0):
+                 att_drop=0, dropout=0, dropout2d=0, repetitions=100):
         super().__init__()
+
+        self.reps = repetitions
 
         config = [
             [16,16,16], [16,16,16], 
@@ -57,6 +61,7 @@ class STTFormerBayes(nn.Module):
         # REPLACED WITH BNN 
         self.fc_out = LinearBayes(66, 66)
         self.conv_out = Conv1dBayes(num_frames, num_frames_out, 1, stride=1)
+        
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 conv_init(m)
@@ -64,6 +69,13 @@ class STTFormerBayes(nn.Module):
                 bn_init(m, 1)
             elif isinstance(m, nn.Linear):
                 fc_init(m)
+
+    def stochastic(self, x):
+        x, kl1 = self.conv_out(x)
+        x, kl2 = self.fc_out(x)  
+        kl_sum = kl1 + kl2
+
+        return x, kl_sum
 
     def forward(self, x):
         x = x.reshape(-1, self.num_frames, self.num_joints, self.num_channels, self.num_persons).permute(0, 3, 1, 2, 4).contiguous()
@@ -78,7 +90,11 @@ class STTFormerBayes(nn.Module):
             x = block(x)
 
         x = x.reshape(-1, self.num_frames, self.num_joints*self.num_channels)
-        x = self.conv_out(x, return_kl = False)
-        x = self.fc_out(x, return_kl = False)  
+        
+        pop = [self.stochastic(x) for _ in range(self.reps)]
+        x_pop, kl_pop = zip(*pop)
+        x_mu = torch.stack(x_pop).mean(dim=0)
+        kl = sum(k for k in kl_pop) / self.reps
+        
+        return x_mu, kl
 
-        return x
