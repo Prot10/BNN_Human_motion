@@ -2,6 +2,7 @@ from typing import Any, Callable, Optional, Union
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from .Autoformer import Model as autoformer
+from .Autoformer_Enc_only import Model as autoformer_only
 from ..utils.loss_funcs import mpjpe_error
 import numpy as np 
 import torch
@@ -21,7 +22,9 @@ class LitAutoformer(L.LightningModule):
     def __init__(self, configs) -> None:
         super().__init__()
         self.configs=configs
-        self.autoformer = autoformer(configs)
+        list_auto = {"autoformer":autoformer,"autoformer_only":autoformer_only}
+        model=list_auto[configs.model]
+        self.autoformer = model(configs)
 
     def forward(self, x) -> Any:
         return self.autoformer.forward(x)
@@ -45,9 +48,18 @@ class LitAutoformer(L.LightningModule):
 
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.configs.lr, weight_decay=self.configs.weight_decay)
+        avoid_regularization = ['mu', 'rho', 'bias', '.1.weight', '.1.bias']
+        deterministic_params = [p for n,p in self.named_parameters() if all(p not in n for p in avoid_regularization)]
+        stochastic_params = [p for n,p in self.named_parameters() if any(p in n for p in avoid_regularization)]
+        optimizer_params = [
+            {'params': deterministic_params, 'weight_decay':self.configs.weight_decay},
+            {'params': stochastic_params,    'weight_decay': 0 }
+        ]
+        
+        optimizer = torch.optim.Adam(optimizer_params, lr=self.configs.lr)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.configs.milestones, gamma=self.configs.gamma)
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'validation mpjpe'}
+        
     
     def validation_step(self, batch, batch_idx):
         loss,kl = self.step(batch)
