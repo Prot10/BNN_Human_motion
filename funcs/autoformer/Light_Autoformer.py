@@ -2,7 +2,7 @@ from typing import Any, Callable, Optional, Union
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from .Autoformer import Model as autoformer
-from .Autoformer_Enc_only import Model as autoformer_only
+from .Autoformer_Enc_only import Model as autoformer_only, Small_decoder as bayes_dec
 from ..utils.loss_funcs import mpjpe_error
 import numpy as np 
 import torch
@@ -25,26 +25,34 @@ class LitAutoformer(L.LightningModule):
         list_auto = {"autoformer":autoformer,"autoformer_only":autoformer_only}
         model=list_auto[configs.model]
         self.autoformer = model(configs)
+        self.dec = bayes_dec(configs)
 
     def forward(self, x) -> Any:
         return self.autoformer.forward(x)
     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
-        loss,kl = self.step(batch)
-        self.log_dict({'training mpjpe':loss,'kl':kl},on_step=True,on_epoch=True,prog_bar=True)
-        return loss+kl
-    
-    def step(self, batch) -> torch.Tensor:
-        batch = batch.float()
 
-        sequences_train=torch.cat((torch.zeros(*batch[:,:1,dim_used].size()).to(batch.device),batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
+        sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
         sequences_gt=batch[:,input_n:,dim_used]
+        enc_s, enc_t = self.autoformer.forward(sequences_train)
 
-        sequences_predict, kl = self.autoformer.forward(sequences_train)
+        kl_out = 0
+        seq = torch.zeros((batch.shape[0],self.configs.pred_len,self.configs.c_out)).to(batch.device)
+        for _ in range(self.configs.samples):
+            seq_run, kl = self.step(enc_s, enc_t)
+            seq += seq_run
+            kl_out += kl
+
+        mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
+        kl_out = kl_out/(self.configs.samples*batch.shape[0])          
+        self.log_dict({'training mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
+
+        return mpjpe+kl_out
+    
+    def step(self, enc_s, enc_t) -> torch.Tensor:
+        sequences_predict, kl = self.dec.forward(enc_s, enc_t)
         sequences_predict[:,1:,:]=sequences_predict[:,1:,:]+sequences_predict[:,:output_n-1,:]
-        sequences_predict=sequences_predict+batch[:,input_n-1:input_n,dim_used]
-
-        return mpjpe_error(sequences_predict,sequences_gt), kl
+        return sequences_predict, kl
 
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
