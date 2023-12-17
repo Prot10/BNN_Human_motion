@@ -32,17 +32,19 @@ class LitAutoformer(L.LightningModule):
             self.dec = dec(configs)
 
     def forward(self, x, reps=None) -> Any:
-        if reps==None:
-            if self.configs.dec=="bayes":
-                seq, kl = self.dec.forward(*(self.autoformer.forward(x)))
-            else:
-                seq = self.dec.forward(*(self.autoformer.forward(x)))
+        if self.configs.dec=="freq":
+          seq = self.dec.forward(*(self.autoformer.forward(x)))
+          return seq                
         else:
-            enc_s, enc_t = self.autoformer.forward(x)
-            enc_s_batched = torch.cat([enc_s] * reps, dim=0)
-            enc_t_batched = torch.cat([enc_t] * reps, dim=0)
-            seq, kl = self.dec.forward(enc_s_batched, enc_t_batched)
-        return seq, kl/x.size(0)
+          if reps==None:
+              seq, kl = self.dec.forward(*(self.autoformer.forward(x)))
+          else:
+              enc_s, enc_t = self.autoformer.forward(x)
+              kl = 0
+              for _ in range(reps):
+                seq, kl_run = self.dec.forward(enc_s, enc_t)
+                kl += kl_run
+          return seq, kl/(reps*self.configs.num_batches)
     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
                                    # primo frame <- tutto a zero
@@ -53,13 +55,11 @@ class LitAutoformer(L.LightningModule):
 
         if self.configs.dec=="bayes":
             # passagli le velocità
-            seq_run, kl = self.forward(sequences_train,self.configs.samples)
+            seq_run, kl_out = self.forward(sequences_train,self.configs.samples)
             seq = seq_run.view(self.configs.samples,batch.shape[0],self.configs.pred_len,self.configs.c_out).mean(0)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
-
                                 # somma l'ultimo elemento dei train frames                            
             mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
-            kl_out = kl/self.configs.samples
             self.log_dict({'training mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe+kl_out
         else:
@@ -96,13 +96,12 @@ class LitAutoformer(L.LightningModule):
 
         if self.configs.dec=="bayes":
             # passagli le velocità
-            seq_run, kl = self.forward(sequences_train,self.configs.samples)
+            seq_run, kl_out = self.forward(sequences_train,self.configs.samples)
             seq = seq_run.view(self.configs.samples,batch.shape[0],self.configs.pred_len,self.configs.c_out).mean(0)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
                                 # somma l'ultimo elemento dei train frames                            
             mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
-            kl_out = kl/self.configs.samples
-            self.log_dict({'training mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
+            self.log_dict({'validation mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe+kl_out
         else:
             seq = self.forward(sequences_train,self.configs.samples)
@@ -110,5 +109,5 @@ class LitAutoformer(L.LightningModule):
 
                                 # somma l'ultimo elemento dei train frames                            
             mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
-            self.log_dict({'training mpjpe':mpjpe},on_step=True,on_epoch=True,prog_bar=True)
+            self.log_dict({'validation mpjpe':mpjpe},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe
