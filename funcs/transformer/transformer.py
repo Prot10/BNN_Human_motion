@@ -15,7 +15,7 @@ skip_rate=1  # skip rate of frames
 joints_to_consider=22
 lr = 1e-02 # learning rate
 use_scheduler=True # use MultiStepLR scheduler
-milestones=[5,10,15,20,25,30]   # the epochs after which the learning rate is adjusted by gamma
+milestones=list(range(0,35,3))  # the epochs after which the learning rate is adjusted by gamma
 gamma=0.1 #gamma correction to the learning rate, after reaching the milestone epochs
 weight_decay=1e-05 # weight decay (L2 penalty)
 dim_used = np.array([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
@@ -29,17 +29,21 @@ class LitSTTFormerBayes(L.LightningModule):
         super().__init__()
         self.transformer = STTFormerBayes(repetitions = repetitions, **kwargs)
         self.reps = repetitions
+        self.speeds = speeds
 
     def forward(self, x, return_population=False, return_dev = False) -> Any:
-        sequences_train = x[:, 0:input_n, dim_used].view(-1,input_n,num_joints,3).permute(0,3,1,2)
+        sequences_train = x[:, 0:input_n, dim_used].view(-1,input_n,num_joints,3)
+        start_place = sequences_train[:,[input_n-1],:,:]
         X = sequences_train
         if self.speeds:
-            X = sequences_train.diff(dim=1, prepend = sequences_train[:,0,:,:])
+            X = sequences_train.diff(dim=1, prepend = sequences_train[:,[0],:,:])
+        X = X.permute(0,3,1,2)
         
         y, kl = self.transformer.forward(X)
-        y = y.view(self.reps, -1, output_n, joints_to_consider, 3)
+        y = y.view(self.reps, -1, output_n, num_joints, 3)
+
         if self.speeds:
-            y = y.cumsum(dim=2) + sequences_train[None,:,[input_n-1],:,:]
+            y = y.cumsum(dim=2) + start_place.unsqueeze(0)
 
         if return_population:
             return y, kl
