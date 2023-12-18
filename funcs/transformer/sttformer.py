@@ -1,5 +1,6 @@
 from os import pidfd_open
 import torch.nn as nn
+from typing import Tuple
 from .sta_block import STA_Block
 from bayesian_torch.layers import LinearReparameterization as LinearBayes, Conv1dReparameterization as Conv1dBayes
 import torch
@@ -33,6 +34,7 @@ class STTFormerBayes(nn.Module):
             [16,16,16], [16, 3,16]]
 
         self.num_frames = num_frames
+        self.num_frames_out = num_frames_out
         self.num_joints = num_joints
         self.num_channels = num_channels
         self.num_persons = num_persons
@@ -59,8 +61,8 @@ class STTFormerBayes(nn.Module):
                                          att_drop=att_drop))   
             
         # REPLACED WITH BNN 
-        self.fc_out = LinearBayes(66, 66)
         self.conv_out = Conv1dBayes(num_frames, num_frames_out, 1, stride=1)
+        self.fc_out = LinearBayes(66, 66)
         
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -77,7 +79,7 @@ class STTFormerBayes(nn.Module):
 
         return x, kl_sum
 
-    def forward(self, x):
+    def forward(self, x : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]: 
         x = x.reshape(-1, self.num_frames, self.num_joints, self.num_channels, self.num_persons).permute(0, 3, 1, 2, 4).contiguous()
         N, C, T, V, M = x.shape
         
@@ -89,12 +91,10 @@ class STTFormerBayes(nn.Module):
         for _, block in enumerate(self.blocks):
             x = block(x)
 
-        x = x.reshape(-1, self.num_frames, self.num_joints*self.num_channels)
+        x = x.reshape(1, -1, self.num_frames, self.num_joints*self.num_channels)
         
-        pop = [self.stochastic(x) for _ in range(self.reps)]
-        x_pop, kl_pop = zip(*pop)
-        x_mu = torch.stack(x_pop).mean(dim=0)
-        kl = sum(k for k in kl_pop) / self.reps
-        
-        return x_mu, kl
+        x_pop = x.repeat(self.reps, 1, 1, 1).view(-1, self.num_frames, self.num_joints*self.num_channels)
+        x_pop, kl = self.stochastic(x_pop)
+        x_pop = x_pop.view(self.reps, -1, self.num_frames_out, self.num_joints, 3)
+        return x_pop, kl/self.reps
 
