@@ -34,6 +34,7 @@ class STTFormerBayes(nn.Module):
             [16,16,16], [16, 3,16]]
 
         self.num_frames = num_frames
+        self.num_frames_out = num_frames_out
         self.num_joints = num_joints
         self.num_channels = num_channels
         self.num_persons = num_persons
@@ -60,8 +61,8 @@ class STTFormerBayes(nn.Module):
                                          att_drop=att_drop))   
             
         # REPLACED WITH BNN 
-        self.fc_out = LinearBayes(66, 66)
         self.conv_out = Conv1dBayes(num_frames, num_frames_out, 1, stride=1)
+        self.fc_out = LinearBayes(66, 66)
         
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -92,7 +93,8 @@ class STTFormerBayes(nn.Module):
 
         x = x.reshape(1, -1, self.num_frames, self.num_joints*self.num_channels)
         
-        x_pop = x.repeat(self.reps, 1, 1, 1)
+        x_pop = x.repeat(self.reps, 1, 1, 1).view(-1, self.num_frames, self.num_joints*self.num_channels)
         x_pop, kl = self.stochastic(x_pop)
+        x_pop = x_pop.view(self.reps, -1, self.num_frames_out, self.num_joints, 3)
         return x_pop, kl/self.reps
 
