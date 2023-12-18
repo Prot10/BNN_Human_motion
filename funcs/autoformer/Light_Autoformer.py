@@ -37,16 +37,17 @@ class LitAutoformer(L.LightningModule):
           return seq                
         else:
           if reps==None:
+              print(reps)
               seq, kl = self.dec.forward(*(self.autoformer.forward(x)))
               return seq, kl
           else:
               enc_s, enc_t = self.autoformer.forward(x)
               kl = 0
-              seq = torch.empty((self.configs.samples,x.shape[0],self.configs.pred_len,self.configs.c_out)).to(x.device)
+              seq = torch.empty((reps,x.shape[0],self.configs.pred_len,self.configs.c_out)).to(x.device)
               for i in range(reps):
-                seq[i], kl_run = self.dec.forward(enc_s, enc_t)
+                seq[i,:,:,:], kl_run = self.dec.forward(enc_s, enc_t)
                 kl += kl_run
-              return seq, kl/(reps*self.configs.num_batches)
+              return seq, kl/reps
     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
                                    # primo frame <- tutto a zero
@@ -63,7 +64,7 @@ class LitAutoformer(L.LightningModule):
                                 # somma l'ultimo elemento dei train frames                            
             mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'training mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
-            return mpjpe+kl_out
+            return mpjpe+kl_out/self.configs.num_batches
         else:
             seq = self.forward(sequences_train)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
@@ -104,7 +105,7 @@ class LitAutoformer(L.LightningModule):
                                 # somma l'ultimo elemento dei train frames                            
             mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'validation mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
-            return mpjpe+kl_out
+            return mpjpe+kl_out/self.configs.num_batches
         else:
             seq = self.forward(sequences_train,self.configs.samples)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
@@ -113,4 +114,3 @@ class LitAutoformer(L.LightningModule):
             mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'validation mpjpe':mpjpe},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe
-
