@@ -14,17 +14,26 @@ PATH = './data/h3.6m/h3.6m/dataset'
 # joints_to_consider=22
 
 
-def load_dataset(input_n=10,output_n=25,skip_rate=1, batch_size=256):
+def load_dataset(input_n=10, output_n=25, skip_rate=1, batch_size=256):
+    
     '''Function that returns the two splits of the Human Motion dataset'''
+    
     print('Loading Train Dataset...')
-    dataset = datasets.Datasets(PATH,input_n,output_n,skip_rate, split=0)
+    dataset = datasets.Datasets(PATH, input_n, output_n, skip_rate, split=0)
+    
     print('Loading Validation Dataset...')
-    vald_dataset = datasets.Datasets(PATH,input_n,output_n,skip_rate, split=1)
+    vald_dataset = datasets.Datasets(PATH, input_n, output_n, skip_rate, split=1)
 
+    print('Loading Test Dataset...')
+    test_dataset = datasets.Datasets(PATH, input_n, output_n, skip_rate, split=2)
+    
     print('>>> Training dataset length: {:d}'.format(dataset.__len__()))
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)#
 
     print('>>> Validation dataset length: {:d}'.format(vald_dataset.__len__()))
     vald_loader = DataLoader(vald_dataset, batch_size=batch_size, num_workers=2, pin_memory=True)
+    
+    print('>>> Test dataset length: {:d}'.format(test_dataset.__len__()))
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=2, shuffle=False, pin_memory=True)
 
-    return data_loader, vald_loader
+    return data_loader, vald_loader, test_loader
