@@ -40,8 +40,6 @@ def load_dataset(input_n=10, output_n=25, skip_rate=1, batch_size=256):
 
 	
 def load_test(actions:list,input_n=10, output_n=25, skip_rate=1, batch_size=256):
-    print('Loading Test Dataset...')
-    test_dataset = datasets.Datasets(PATH, input_n, output_n, skip_rate, split=2, action=actions)
-    print('>>> Test dataset length: {:d}'.format(test_dataset.__len__()))
+    test_dataset = datasets.Datasets(PATH, input_n, output_n, skip_rate, split=2, actions=actions)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=2, shuffle=False, pin_memory=True)
     return test_loader

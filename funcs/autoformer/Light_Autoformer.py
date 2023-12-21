@@ -73,8 +73,6 @@ class LitAutoformer(L.LightningModule):
             mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'training mpjpe':mpjpe},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe
-        
-
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         avoid_regularization = ['mu', 'rho', 'bias', '.1.weight', '.1.bias']
@@ -90,28 +88,32 @@ class LitAutoformer(L.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'validation mpjpe'}
     
     @torch.no_grad
-    def test_step(self,batch,batch_idx):
-                                   # primo frame <- tutto a zero
+    def build_ci(self, x:torch.Tensor, reps=200, alpha:float=0.1, bonferroni:bool=True):
+        if bonferroni:
+            alpha = alpha/x.shape[-2]
+        sequences_train=torch.cat((torch.zeros((x.shape[0],1,x.shape[2])).to(x.device),x[:,1:self.configs.seq_len,:]-x[:,:self.configs.seq_len-1,:]),1)
+        y_samples, _ = self.forward(sequences_train, reps)
+        y_samples = y_samples
+        y_samples[:,:,1:,:]=y_samples[:,:,1:,:]+y_samples[:,:,:self.configs.pred_len-1,:]+x[:,self.configs.seq_len-1:self.configs.seq_len,:]
+        mu = y_samples.mean(dim=0, keepdim=True)
+        diff = (y_samples - mu).view(reps,-1,self.configs.pred_len,len(dim_used)//3,3)
+        dev = torch.linalg.vector_norm(diff, dim=-1)
+        dev = dev.numpy(force=True)
+        return mu.squeeze(), np.quantile(dev, 1-alpha, axis=0)
+    
+    @torch.no_grad
+    def speed_step(self,batch):
         sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),
-                                   # sottrai successivi ai precedenti e trovi lo spostamento step-by-step
-                                   batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
-        sequences_gt=batch[:,input_n:,dim_used]
-
+                                   batch[:,1:self.configs.seq_len,dim_used]-batch[:,:self.configs.seq_len-1,dim_used]),1)
         if self.configs.dec=="bayes":
-            # passagli le velocità
-            seq_run, kl_out = self.forward(sequences_train,self.configs.samples)
+            seq_run, _ = self.forward(sequences_train,self.configs.samples)
             seq = seq_run.mean(0)
-            seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
-                                # somma l'ultimo elemento dei train frames                            
-            mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
-            return mpjpe
+            seq[:,1:,:]=seq[:,1:,:]+seq[:,:self.configs.pred_len-1,:]+batch[:,self.configs.seq_len-1:self.configs.seq_len,dim_used]
+            return seq
         else:
             seq = self.forward(sequences_train,self.configs.samples)
-            seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
-
-                                # somma l'ultimo elemento dei train frames                            
-            mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
-            return mpjpe
+            seq[:,1:,:]=seq[:,1:,:]+seq[:,:self.configs.pred_len-1,:]+batch[:,self.configs.seq_len-1:self.configs.seq_len,dim_used]
+            return seq
         
     @torch.no_grad
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
