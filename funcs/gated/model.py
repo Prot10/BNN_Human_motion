@@ -114,3 +114,15 @@ class Model(nn.Module):
             return all_results, avg_results.view(all_results.shape[1], all_results.shape[2], 66).permute(1, 0, 2), avg_kl_loss
 
         return avg_results.view(all_results.shape[1], all_results.shape[2], 66).permute(1, 0, 2), avg_kl_loss
+    
+    
+    
+    def count_parameters(self):
+
+        # Counts the number of  parameters of the model
+
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        non_trainable_params = total_params - trainable_params
+        
+        return trainable_params, non_trainable_params, total_params
