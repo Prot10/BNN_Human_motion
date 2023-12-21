@@ -91,10 +91,11 @@ class STTFormerBayes(nn.Module):
         for _, block in enumerate(self.blocks):
             x = block(x)
 
-        x = x.reshape(1, -1, self.num_frames, self.num_joints*self.num_channels)
+        x = x.reshape(-1, self.num_frames, self.num_joints*self.num_channels)
         
-        x_pop = x.repeat(self.reps, 1, 1, 1).view(-1, self.num_frames, self.num_joints*self.num_channels)
-        x_pop, kl = self.stochastic(x_pop)
-        x_pop = x_pop.view(self.reps, -1, self.num_frames_out, self.num_joints, 3)
-        return x_pop, kl/self.reps
+        x_kl = [self.stochastic(x) for _ in range(self.reps)]
+        x_pop, kl_pop = zip(*x_kl)
+        kl = sum(kl for kl in kl_pop)
+        x_pop = torch.stack(x_pop).view(self.reps, -1, self.num_frames_out, self.num_joints, 3)
+        return x_pop, kl / self.reps
 
