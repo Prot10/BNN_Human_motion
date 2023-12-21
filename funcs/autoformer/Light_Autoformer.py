@@ -62,7 +62,7 @@ class LitAutoformer(L.LightningModule):
             seq = seq_run.mean(0)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
                                 # somma l'ultimo elemento dei train frames                            
-            mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
+            mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'training mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe+kl_out/self.configs.num_batches
         else:
@@ -88,6 +88,30 @@ class LitAutoformer(L.LightningModule):
         optimizer = torch.optim.Adam(optimizer_params, lr=self.configs.lr)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.configs.milestones, gamma=self.configs.gamma)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'validation mpjpe'}
+    
+    @torch.no_grad
+    def test_step(self,batch,batch_idx):
+                                   # primo frame <- tutto a zero
+        sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),
+                                   # sottrai successivi ai precedenti e trovi lo spostamento step-by-step
+                                   batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
+        sequences_gt=batch[:,input_n:,dim_used]
+
+        if self.configs.dec=="bayes":
+            # passagli le velocità
+            seq_run, kl_out = self.forward(sequences_train,self.configs.samples)
+            seq = seq_run.mean(0)
+            seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
+                                # somma l'ultimo elemento dei train frames                            
+            mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
+            return mpjpe
+        else:
+            seq = self.forward(sequences_train,self.configs.samples)
+            seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
+
+                                # somma l'ultimo elemento dei train frames                            
+            mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
+            return mpjpe
         
     @torch.no_grad
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
@@ -103,7 +127,7 @@ class LitAutoformer(L.LightningModule):
             seq = seq_run.mean(0)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
                                 # somma l'ultimo elemento dei train frames                            
-            mpjpe = mpjpe_error(seq/self.configs.samples + batch[:,input_n-1:input_n,dim_used],sequences_gt)
+            mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'validation mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe+kl_out/self.configs.num_batches
         else:
