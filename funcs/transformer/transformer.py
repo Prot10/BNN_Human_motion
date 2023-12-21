@@ -51,7 +51,7 @@ class LitSTTFormerBayes(L.LightningModule):
         y_mu = y.mean(dim=0)
         if not return_dev:
             return y_mu, kl
-        dev = torch.linalg.vector_norm(y - y_mu, dim=-1)
+        dev = torch.linalg.vector_norm(y - y_mu, dim=-1).mean(dim=0) #+ 1e-6
  
         return y_mu, dev, kl
         
@@ -59,32 +59,33 @@ class LitSTTFormerBayes(L.LightningModule):
     @torch.no_grad
     def build_ci(self, x: torch.Tensor, alpha:float=0.1, bonferroni:bool=True):
         if bonferroni:
-            alpha = alpha/x.shape[-2]
+            alpha = alpha/num_joints
             # correct for the number of joints
         y_samples, _ = self.forward(x, return_population=True)
         # sample is dimension 1000 x Batch x OutputFrames x Joints x 3
         mu = y_samples.mean(dim=0, keepdim=True)
-        diff = (y_samples - mu)
-        dev = torch.linalg.vector_norm(diff, dim=-1)
-        dev = dev.numpy(force=True)
+        dev = torch.linalg.vector_norm(y_samples - mu, dim=-1).numpy(force=True)
+
         return mu.squeeze(), np.quantile(dev, 1-alpha, axis=0)
 
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
         loss, kl_loss, avu_loss = self.step(batch)
+        # print(loss, kl_loss, avu_loss)
         self.log('training_loss', loss)
         self.log('KL_divergence', kl_loss)
         self.log('AvU_loss', avu_loss)
-        return loss + kl_loss / batch.shape[0] + avu_loss/4
+        return loss + avu_loss + kl_loss #/ batch.shape[0]
     
-    def step(self, batch : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def step(self, batch : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch = batch.float()
         y_pred, y_dev , kl_loss = self.forward(batch, return_dev=True)
         y_pred = y_pred.view(-1,output_n,num_joints,3)
 
         y_gt = batch[:, input_n:input_n+output_n, dim_used].view(-1,output_n,num_joints,3)
-        error = torch.linalg.vector_norm(y_gt - y_pred, dim=-1)
+        error = torch.norm(y_gt - y_pred, p=2, dim=-1)
         mpjpe = error.mean()
-        avu_loss = ((error - y_dev)**2).mean().sqrt()
+        avu_loss = torch.norm(error - 3*y_dev, p=2) / self.reps / num_joints
+        # print(avu_loss, y_dev.max())
 
         return mpjpe, kl_loss, avu_loss
 
