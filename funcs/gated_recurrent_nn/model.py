@@ -1,9 +1,17 @@
 import torch.nn as nn
-from .pos_embed import Pos_Embed
-from .encoder import *
-from .decoder import *
+from pos_embed import Pos_Embed
+from encoder import *
+from decoder import *
+
+import torch
+import torch.optim as optim
+from tqdm import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+from ..loss import mpjpe_error
 
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Initializes conv layers using He initialization
 def conv_init(conv):
@@ -77,7 +85,7 @@ class Model(nn.Module):
                 fc_init(m)
 
 
-    def forward(self, x):
+    def forward(self, x, num_predictions):
         
         # Initial tensor processing
         x = x.view(-1, self.old_frames, self.num_joints, self.num_channels).permute(0, 3, 1, 2)
@@ -96,18 +104,18 @@ class Model(nn.Module):
         kl_loss = 0
 
         # Repeat the decoding process num_predictions times
-        for _ in range(self.num_predictions):
+        for _ in range(num_predictions):
             results, kl_loss_step = self.dec(hidden=context, num_steps=self.num_frames_out)
             all_results.append(results)
             kl_loss += kl_loss_step
 
         # Converting list to tensor
         all_results = torch.stack(all_results)
-        all_results = all_results.view(self.num_predictions, all_results.shape[1], all_results.shape[2], 22, 3)
+        all_results = all_results.view(num_predictions, all_results.shape[1], all_results.shape[2], 22, 3)
         
         # Compute the average of results and KL losses
-        avg_results = torch.mean(all_results.view(self.num_predictions, all_results.shape[1], all_results.shape[2], 22, 3), dim=0)
-        avg_kl_loss = kl_loss / self.num_predictions
+        avg_results = torch.mean(all_results.view(num_predictions, all_results.shape[1], all_results.shape[2], 22, 3), dim=0)
+        avg_kl_loss = kl_loss / num_predictions
 
         # Return all the sample if return_sample is True
         if self.return_sample:
@@ -120,7 +128,7 @@ class Model(nn.Module):
     def count_parameters(self):
 
         # Counts the number of  parameters of the model
-
+        
         total_params = sum(p.numel() for p in self.parameters())
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         non_trainable_params = total_params - trainable_params

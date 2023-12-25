@@ -6,77 +6,37 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ..loss import mpjpe_error
 
+
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
 
 class Training():
     
-    def __init__(self, data_loader, vald_loader, clip_grad=None, 
-                 device=device, n_epochs=25, log_step=100, 
-                 input_n=10, output_n=25, num_channels=3, dropout=0.3,
-                 num_joints=22, num_heads=8, num_predictions=10,
+    def __init__(self, model, data_loader, vald_loader, input_n, output_n,
+                 clip_grad=None, device=device, n_epochs=25, log_step=100, 
                  lr=1e-04, use_scheduler=True, milestones=[4, 8, 12, 16],
                  gamma=0.7, weight_decay=3e-04, use_wandb=False, save_and_plot=True):
     
+        self.model = model
         self.data_loader = data_loader
         self.vald_loader = vald_loader
+        self.input_n = input_n
+        self.output_n = output_n
+        self.optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
         self.clip_grad = clip_grad
         self.device = device
         self.n_epochs = n_epochs
         self.log_step = log_step
-        self.input_n = input_n
-        self.output_n = output_n
-        self.num_channels = num_channels
-        self.dropout = dropout
-        self.num_joints = num_joints
-        self.num_heads = num_heads
-        self.num_predictions = num_predictions
-        self.lr = lr
-        self.use_scheduler = use_scheduler
-        self.milestones = milestones
-        self.gamma = gamma
-        self.weight_decay = weight_decay
         self.use_wandb = use_wandb
         self.save_and_plot = save_and_plot
-
-
-    def constructor(self):
-        
-        datas = 'h36m'
-        model_path = datas + '_3d_' + str(self.output_n) + 'frames_ckpt'
-
-        model = Model(num_channels=self.num_channels,
-                    num_frames_out=self.output_n,
-                    old_frames=self.input_n,
-                    num_joints=self.num_joints,
-                    num_heads=self.num_heads,
-                    num_predictions=self.num_predictions,
-                    drop=self.dropout).to(self.device)
-        
-        optimizer = optim.Adam(model.parameters(), lr=self.lr,
-                               weight_decay=self.weight_decay)
-
-        if self.use_scheduler:
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                                       milestones=self.milestones,
-                                                       gamma=self.gamma)
-            
-        if self.use_wandb:
-            self.wandb.init(project="AML_FinalProject", config={
-            "learning_rate": self.lr,
-            "dropout": self.dropout,
-            "gamma": self.gamma,
-            "weight_decay": self.weight_decay,
-            "milestones": self.milestones,
-            "parameters": self.trainable_params,
-            })
-            config = self.wandb.config
-        
-        return model, scheduler, config, optimizer
+        if use_scheduler:
+            self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=gamma)
         
         
     def train(self):
             
-        model, scheduler, _, optimizer = self.constructor()
         train_loss = []
         val_loss = []
         val_loss_best = 1000
@@ -91,7 +51,7 @@ class Training():
             running_loss = 0
             n = 0
 
-            model.train()
+            self.model.train()
             for cnt, batch in tqdm(enumerate(self.data_loader)):
                 batch = batch.float().to(self.device)
                 batch_dim = batch.shape[0]
@@ -100,9 +60,9 @@ class Training():
                 sequences_train = torch.cat((torch.zeros(*batch[:, :1, dim_used].size()).to(device), batch[:, 1:10, dim_used]-batch[:, :9, dim_used]), 1)
                 sequences_gt = batch[:, self.input_n:self.input_n + self.output_n, dim_used]
 
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
 
-                sequences_predict, kl_loss = model(sequences_train)
+                sequences_predict, kl_loss = self.model(sequences_train)
                 sequences_predict[:, 1:self.output_n, :] = sequences_predict[:, 1:self.output_n, :] + sequences_predict[:, :self.output_n-1, :]
                 sequences_predict = (sequences_predict + batch[:, (self.input_n-1):self.input_n, dim_used])
 
@@ -119,14 +79,14 @@ class Training():
                 loss.backward()
 
                 if self.clip_grad is not None:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), self.clip_grad)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
 
-                optimizer.step()
+                self.optimizer.step()
                 running_loss += loss * batch_dim
 
             train_loss.append(running_loss.detach().cpu()/n)
 
-            model.eval()
+            self.model.eval()
             with torch.no_grad():
                 running_loss = 0
                 n = 0
@@ -138,7 +98,7 @@ class Training():
                     sequences_train = torch.cat((torch.zeros(*batch[:, :1, dim_used].size()).to(device), batch[:, 1:self.input_n, dim_used] - batch[:, :self.input_n-1, dim_used]), 1)
                     sequences_gt = batch[:, self.input_n:self.input_n+self.output_n, dim_used]
 
-                    sequences_predict, kl_loss = model(sequences_train)
+                    sequences_predict, kl_loss = self.model(sequences_train)
                     sequences_predict[:, 1:self.output_n, :] = sequences_predict[:, 1:self.output_n, :] + sequences_predict[:, :(self.output_n-1), :]
                     sequences_predict = (sequences_predict + batch[:, (self.input_n-1):self.input_n, dim_used])
                     loss1 = mpjpe_error(sequences_predict, sequences_gt)
@@ -156,7 +116,7 @@ class Training():
 
                 if running_loss/n < val_loss_best:
                     val_loss_best = running_loss/n
-                    torch.save(model.state_dict(), './checkpoints/Best_checkpoint.pt')
+                    torch.save(self.model.state_dict(), './checkpoints/Best_checkpoint.pt')
                     if self.use_wandb:
                         self.wandb.run.log_artifact('./checkpoints/Best_checkpoint.pt', name="Best_checkpoint")
 
@@ -164,7 +124,7 @@ class Training():
                 val_losses.append(val_loss[-1])
 
         if self.use_scheduler:
-            scheduler.step()
+            self.scheduler.step()
 
         epochs = list(np.arange(1, self.n_epochs+1))
 
