@@ -14,14 +14,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class Training():
     
-    def __init__(self, model, data_loader, vald_loader, input_n, output_n,
+    def __init__(self, model, input_n, output_n,
                  clip_grad=None, device=device, n_epochs=25, log_step=100, 
                  lr=1e-04, use_scheduler=True, milestones=[4, 8, 12, 16],
                  gamma=0.7, weight_decay=3e-04, use_wandb=False, save_and_plot=True):
     
         self.model = model
-        self.data_loader = data_loader
-        self.vald_loader = vald_loader
         self.input_n = input_n
         self.output_n = output_n
         self.optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -35,7 +33,7 @@ class Training():
             self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=gamma)
         
         
-    def train(self):
+    def train(self, data_loader, vald_loader):
             
         train_loss = []
         val_loss = []
@@ -52,7 +50,7 @@ class Training():
             n = 0
 
             self.model.train()
-            for cnt, batch in tqdm(enumerate(self.data_loader)):
+            for cnt, batch in tqdm(enumerate(data_loader)):
                 batch = batch.float().to(self.device)
                 batch_dim = batch.shape[0]
                 n += batch_dim
@@ -90,7 +88,7 @@ class Training():
             with torch.no_grad():
                 running_loss = 0
                 n = 0
-                for cnt, batch in tqdm(enumerate(self.vald_loader)):
+                for cnt, batch in tqdm(enumerate(vald_loader)):
                     batch = batch.float().to(device)
                     batch_dim = batch.shape[0]
                     n += batch_dim
