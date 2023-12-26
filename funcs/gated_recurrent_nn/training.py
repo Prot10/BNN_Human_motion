@@ -4,8 +4,9 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from ..loss import mpjpe_error
+import os
 
-
+os.
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -113,6 +114,7 @@ class Training():
 
                 if running_loss/n < val_loss_best:
                     val_loss_best = running_loss/n
+                    print(os.getcwd())
                     torch.save(self.model.state_dict(), 'checkpoints/Best_checkpoint.pt')
                     if self.use_wandb:
                         wandb.run.log_artifact('checkpoints/Best_checkpoint.pt', name="Best_checkpoint")
