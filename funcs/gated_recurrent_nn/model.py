@@ -69,7 +69,7 @@ class Model(nn.Module):
         self.pos = Pos_Embed(self.num_channels,self.old_frames,self.num_joints)
         
         # Decoder instance
-        self.dec = Decoder(self.d_model, num_predictions)
+        self.dec = Decoder(self.d_model, self.num_predictions)
 
         # Weight initialization
         for m in self.modules():
@@ -85,7 +85,7 @@ class Model(nn.Module):
                 fc_init(m)
 
 
-    def forward(self, x, num_predictions):
+    def forward(self, x):
         
         # Initial tensor processing
         x = x.view(-1, self.old_frames, self.num_joints, self.num_channels).permute(0, 3, 1, 2)
@@ -104,18 +104,18 @@ class Model(nn.Module):
         kl_loss = 0
 
         # Repeat the decoding process num_predictions times
-        for _ in range(num_predictions):
+        for _ in range(self.num_predictions):
             results, kl_loss_step = self.dec(hidden=context, num_steps=self.num_frames_out)
             all_results.append(results)
             kl_loss += kl_loss_step
 
         # Converting list to tensor
         all_results = torch.stack(all_results)
-        all_results = all_results.view(num_predictions, all_results.shape[1], all_results.shape[2], 22, 3)
+        all_results = all_results.view(self.num_predictions, all_results.shape[1], all_results.shape[2], 22, 3)
         
         # Compute the average of results and KL losses
-        avg_results = torch.mean(all_results.view(num_predictions, all_results.shape[1], all_results.shape[2], 22, 3), dim=0)
-        avg_kl_loss = kl_loss / num_predictions
+        avg_results = torch.mean(all_results.view(self.num_predictions, all_results.shape[1], all_results.shape[2], 22, 3), dim=0)
+        avg_kl_loss = kl_loss / self.num_predictions
 
         # Return all the sample if return_sample is True
         if self.return_sample:
