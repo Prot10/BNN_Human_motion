@@ -4,7 +4,6 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from ..loss import mpjpe_error
-import os
 
 
 
@@ -28,6 +27,7 @@ class Training():
         self.device = device
         self.n_epochs = n_epochs
         self.log_step = log_step
+        self.use_scheduler = use_scheduler
         self.use_wandb = use_wandb
         self.save_and_plot = save_and_plot
         self.path = path
@@ -116,7 +116,6 @@ class Training():
 
                 if running_loss/n < val_loss_best:
                     val_loss_best = running_loss/n
-                    print(os.getcwd())
                     torch.save(self.model.state_dict(), self.path)
                     if self.use_wandb:
                         wandb.run.log_artifact(self.path, name="Best_checkpoint")
