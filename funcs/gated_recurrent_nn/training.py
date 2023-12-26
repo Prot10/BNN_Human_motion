@@ -123,8 +123,8 @@ class Training():
                 train_losses.append(train_loss[-1])
                 val_losses.append(val_loss[-1])
 
-        if self.use_scheduler:
-            self.scheduler.step()
+            if self.use_scheduler:
+                self.scheduler.step()
 
         epochs = list(np.arange(1, self.n_epochs+1))
 

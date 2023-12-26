@@ -1,90 +1,124 @@
+import time
 import torch
 import numpy as np
+from tqdm import tqdm
+from funcs.utils.data_utils import *
+from ..loss import mpjpe_error
+
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-class testing():
+
+def test(model, ckpt_path, test_loader, input_n,
+         output_n, actions_to_consider_test='all'):
+
+    model.load_state_dict(torch.load(ckpt_path))
+    print('Model loaded')
+
+    model = model.to(device)
+    model.eval()
+    accum_loss = 0
+    n_batches = 0
+    actions = define_actions(actions_to_consider_test)
+    dim_used = np.array([ 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
+                          26, 27, 28, 29, 30, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+                          46, 47, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63, 64, 65, 66, 67, 68,
+                          75, 76, 77, 78, 79, 80, 81, 82, 83, 87, 88, 89, 90, 91, 92 ])
+    totalll = 0
+    counter = 0
+
+    for action in actions:
+      running_loss = 0
+      n = 0
+
+      with torch.no_grad():
+          for cnt, batch in enumerate(test_loader):
+              batch = batch.float().to(device)
+              batch_dim = batch.shape[0]
+              n += batch_dim
+
+              sequences_train = torch.cat((torch.zeros(*batch[:, :1, dim_used].size()).to(device), batch[:, 1:input_n, dim_used] - batch[:, :input_n-1, dim_used]), 1)
+              sequences_gt = batch[:, input_n:input_n + output_n, dim_used]
+
+              running_time = time.time()
+              sequences_predict, kl_loss = model(sequences_train)
+              sequences_predict[:, 1:output_n, :] = sequences_predict[:, 1:output_n, :] + sequences_predict[:, :(output_n-1), :]
+              sequences_predict = (sequences_predict + batch[:, (input_n-1):input_n, dim_used])
+              loss1 = mpjpe_error(sequences_predict, sequences_gt)
+              loss = loss1 + kl_loss / batch_dim
+
+              totalll += time.time()-running_time
+              counter += 1
+
+              running_loss += loss*batch_dim
+              accum_loss += loss*batch_dim
+
+          print(str(action),': ', str(np.round((running_loss/n).item(),1)))
+          n_batches += n
+
+    print('Average: ' + str(np.round((accum_loss/n_batches).item(),1)))
+    print('Prediction time: ', totalll/counter)
     
     
-    def __init__(self, model, ckpt_path):
+    
+def build_ci(x, alpha=0.1, bonferroni=True):
+        # correct for the number of joints
+        if bonferroni:
+            alpha = alpha/x.shape[-2]
+
+        # sample is dimension num_predictions x Batch x OutputFrames x Joints x 3
+        mu = x.mean(dim=0, keepdim=True)
+        diff = (x - mu)
+        dev = torch.linalg.vector_norm(diff, dim=-1)
+        dev = dev.numpy(force=True)
+
+        return mu.squeeze(), np.quantile(dev, 1-alpha, axis=0)
+    
     
 
-        
-        
+def get_ci(model, ckpt_path, test_loader,
+           input_n, output_n):
+    
+    model.load_state_dict(torch.load(ckpt_path))
+    print('Model loaded')
+    
+    ci_batch = []
+    mu_batch = []
+    isin_batch = []
+    
+    dim_used = np.array([ 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
+                          26, 27, 28, 29, 30, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+                          46, 47, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63, 64, 65, 66, 67, 68,
+                          75, 76, 77, 78, 79, 80, 81, 82, 83, 87, 88, 89, 90, 91, 92 ])
 
-    def test(model, ckpt_path):
+    with torch.no_grad():
 
-        model.load_state_dict(torch.load(ckpt_path))
-        print('Model loaded')
-
-        model = model.to(device)
-        model.eval()
-        accum_loss = 0
-        n_batches = 0
-        actions = define_actions(actions_to_consider_test)
-        dim_used = np.array([ 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
-                            26, 27, 28, 29, 30, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
-                            46, 47, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63, 64, 65, 66, 67, 68,
-                            75, 76, 77, 78, 79, 80, 81, 82, 83, 87, 88, 89, 90, 91, 92 ])
-        joint_to_ignore = np.array([16, 20, 23, 24, 28, 31])
-        index_to_ignore = np.concatenate((joint_to_ignore * 3, joint_to_ignore * 3 + 1, joint_to_ignore * 3 + 2))
-        joint_equal = np.array([13, 19, 22, 13, 27, 30])
-        index_to_equal = np.concatenate((joint_equal*3, joint_equal*3+1, joint_equal*3+2))
-        totalll = 0
-        counter = 0
-
-        for action in actions:
-        running_loss = 0
         n = 0
-        dataset_test = datasets.Datasets(path, input_n, output_n, skip_rate, split=2, actions=[action])
-        test_loader = DataLoader(dataset_test, batch_size=batch_size_test, shuffle=False, num_workers=0, pin_memory=True)
+        for _, batch in tqdm(enumerate(test_loader)):
 
-        with torch.no_grad():
-            for cnt, batch in enumerate(test_loader):
-                batch = batch.float().to(device)
-                batch_dim = batch.shape[0]
-                n += batch_dim
+            batch = batch.float().to(device)
+            batch_dim = batch.shape[0]
+            n += batch_dim
 
-                sequences_train = torch.cat((torch.zeros(*batch[:, :1, dim_used].size()).to(device), batch[:, 1:input_n, dim_used] - batch[:, :input_n-1, dim_used]), 1)
-                sequences_gt = batch[:, input_n:input_n + output_n, dim_used]
+            sequences_train = torch.cat((torch.zeros(*batch[:, :1, dim_used].size()).to(device), batch[:, 1:input_n, dim_used] - batch[:, :input_n-1, dim_used]), 1)
 
-                running_time = time.time()
-                sequences_predict, kl_loss = model(sequences_train)
-                sequences_predict[:, 1:output_n, :] = sequences_predict[:, 1:output_n, :] + sequences_predict[:, :(output_n-1), :]
-                sequences_predict = (sequences_predict + batch[:, (input_n-1):input_n, dim_used])
-                loss1 = mpjpe_error(sequences_predict, sequences_gt)
-                loss = loss1 + kl_loss / batch_dim
+            sequences_gt = batch[:, input_n:input_n + output_n, dim_used]
+            sequences_gt = sequences_gt.view(sequences_gt.shape[0], sequences_gt.shape[1], 22, 3)
 
-                totalll += time.time()-running_time
-                counter += 1
+            sequences, _, _ = model(sequences_train)
 
-                running_loss += loss*batch_dim
-                accum_loss += loss*batch_dim
+            m, c = build_ci(sequences.permute(0, 2, 1, 3, 4))
+            mu_batch.append(m)
+            ci_batch.append(c)
 
-            print(str(action),': ', str(np.round((running_loss/n).item(),1)))
-            n_batches += n
+            dev = torch.linalg.vector_norm(m - sequences_gt, dim=-1).numpy(force=True)
+            isin = dev < c
+            isin_batch.append(isin)
 
-        print('Average: ' + str(np.round((accum_loss/n_batches).item(),1)))
-        print('Prediction time: ', totalll/counter)
-        
-        
-
-
-
-    num_predictions = 200
-    model = Model(num_channels=num_channels,
-                num_frames_out=output_n,
-                old_frames=input_n,
-                num_joints=num_joints,
-                num_heads=num_heads,
-                num_predictions=num_predictions,
-                drop=dropout)
-    path = './data/h3.6m/h3.6m/dataset'
-    skip_rate = 1
-    batch_size_test = 8
-    actions_to_consider_test = 'all'
-    ckpt_path = './checkpoints/Best_checkpoint.pt'
-
-    test(model, ckpt_path)
+    mu = torch.concatenate(mu_batch, axis=0)
+    ci = np.concatenate(ci_batch, axis=0)
+    isin = np.concatenate(isin_batch, axis=0)
+    
+    return mu, ci, isin
