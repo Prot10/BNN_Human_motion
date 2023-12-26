@@ -1,4 +1,3 @@
-from .model import Model
 import torch
 import torch.optim as optim
 from tqdm import tqdm
@@ -69,7 +68,7 @@ class Training():
                 loss = loss1 + kl_loss
 
                 if self.use_wandb:
-                    self.wandb.log({"train_mpjpe_error": loss1, "train_kl_loss": kl_loss, "train_total_loss": loss})
+                    wandb.log({"train_mpjpe_error": loss1, "train_kl_loss": kl_loss, "train_total_loss": loss})
 
                 if cnt % self.log_step == 0:
                     print('[Epoch: {:<2d} | Iteration: {:>5d} | Train ] MPJPE loss: {:.3f} | KL loss: {:.3f} | Total loss: {:.3f}'.format(epoch + 1, cnt + 1, loss1, kl_loss, loss.item()))
@@ -103,7 +102,7 @@ class Training():
                     loss = loss1 + kl_loss / batch_dim
 
                     if self.use_wandb:
-                        self.wandb.log({"val_mpjpe_error": loss1, "val_kl_loss": kl_loss, "val_total_loss": loss})
+                        wandb.log({"val_mpjpe_error": loss1, "val_kl_loss": kl_loss, "val_total_loss": loss})
 
                     if cnt % self.log_step == 0:
                         print('\033[1m[Epoch: {:<2d} | Iteration: {:>5d} | Val   ] MPJPE loss: {:.3f} | KL loss: {:.3f} | Total loss: {:.3f}\033[0m'.format(epoch + 1, cnt + 1, loss1, kl_loss / batch_dim, loss.item()))
@@ -114,9 +113,9 @@ class Training():
 
                 if running_loss/n < val_loss_best:
                     val_loss_best = running_loss/n
-                    torch.save(self.model.state_dict(), './checkpoints/Best_checkpoint.pt')
+                    torch.save(self.model.state_dict(), 'checkpoints/Best_checkpoint.pt')
                     if self.use_wandb:
-                        self.wandb.run.log_artifact('./checkpoints/Best_checkpoint.pt', name="Best_checkpoint")
+                        wandb.run.log_artifact('checkpoints/Best_checkpoint.pt', name="Best_checkpoint")
 
                 train_losses.append(train_loss[-1])
                 val_losses.append(val_loss[-1])
