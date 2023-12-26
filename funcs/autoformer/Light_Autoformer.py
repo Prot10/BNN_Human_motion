@@ -1,7 +1,6 @@
 from typing import Any, Callable, Optional, Union
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
-from .Autoformer import Model as autoformer
 from .Autoformer_Enc_only import Model as autoformer_only, Small_decoder_bayes as bayes_dec, Small_decoder_freq as freq_dec
 from ..utils.loss_funcs import mpjpe_error
 import numpy as np 
@@ -22,14 +21,11 @@ class LitAutoformer(L.LightningModule):
     def __init__(self, configs) -> None:
         super().__init__()
         self.configs=configs
-        list_auto = {"autoformer":autoformer,"autoformer_only":autoformer_only}
-        model=list_auto[configs.model]
-        self.autoformer = model(configs)
+        self.autoformer = autoformer_only(configs)
 
-        if configs.model=="autoformer_only":
-            list_dec = {"bayes":bayes_dec,"freq":freq_dec}
-            dec = list_dec[configs.dec]
-            self.dec = dec(configs)
+        list_dec = {"bayes":bayes_dec,"freq":freq_dec}
+        dec = list_dec[configs.dec]
+        self.dec = dec(configs)
 
     def forward(self, x, reps=None) -> Any:
         if self.configs.dec=="freq":
@@ -55,7 +51,6 @@ class LitAutoformer(L.LightningModule):
         sequences_gt=batch[:,input_n:,dim_used]
 
         if self.configs.dec=="bayes":
-            # passagli le velocità
             seq_run, kl_out = self.forward(sequences_train,self.configs.samples)
             seq = seq_run.mean(0)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
@@ -114,26 +109,19 @@ class LitAutoformer(L.LightningModule):
         
     @torch.no_grad
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
-                                   # primo frame <- tutto a zero
         sequences_train=torch.cat((torch.zeros((batch.shape[0],1,self.configs.c_out)).to(batch.device),
-                                   # sottrai successivi ai precedenti e trovi lo spostamento step-by-step
                                    batch[:,1:input_n,dim_used]-batch[:,:input_n-1,dim_used]),1)
         sequences_gt=batch[:,input_n:,dim_used]
-
         if self.configs.dec=="bayes":
-            # passagli le velocità
             seq_run, kl_out = self.forward(sequences_train,self.configs.samples)
             seq = seq_run.mean(0)
             seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
-                                # somma l'ultimo elemento dei train frames                            
             mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'validation mpjpe':mpjpe,'kl':kl_out},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe+kl_out/self.configs.num_batches
         else:
             seq = self.forward(sequences_train,self.configs.samples)
-            seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]
-
-                                # somma l'ultimo elemento dei train frames                            
+            seq[:,1:,:]=seq[:,1:,:]+seq[:,:output_n-1,:]                          
             mpjpe = mpjpe_error(seq + batch[:,input_n-1:input_n,dim_used],sequences_gt)
             self.log_dict({'validation mpjpe':mpjpe},on_step=True,on_epoch=True,prog_bar=True)
             return mpjpe
