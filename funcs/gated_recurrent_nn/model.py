@@ -1,7 +1,7 @@
 import torch.nn as nn
-from pos_embed import Pos_Embed
-from encoder import *
-from decoder import *
+from .pos_embed import Pos_Embed
+from .encoder import *
+from .decoder import *
 
 import torch
 import torch.optim as optim
@@ -56,7 +56,7 @@ class Model(nn.Module):
         self.return_sample = return_sample
 
         # Linear and normalization layers for processing inputs
-        self.lin = nn.Sequential(nn.Linear(self.num_channels*self.num_joints,d_model),nn.BatchNorm1d(self.old_frames))
+        self.lin = nn.Sequential(nn.Linear(self.num_channels*self.num_joints, d_model),nn.BatchNorm1d(self.old_frames))
         self.norm = nn.BatchNorm2d(self.num_channels)
 
         # List of EncoderBlocks
@@ -64,7 +64,7 @@ class Model(nn.Module):
         for index, (d_, in_, out_) in enumerate(self.config):
             self.blocks.append(EncoderBlock(num_heads=self.num_heads,
                                             d_model=d_, time_in=in_, time_out=out_,
-                                            num_joints=self.num_joints,dropout=drop))
+                                            num_joints=self.num_joints, dropout=drop))
         # Positional embedding layer
         self.pos = Pos_Embed(self.num_channels,self.old_frames,self.num_joints)
         
