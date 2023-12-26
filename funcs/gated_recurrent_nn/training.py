@@ -17,7 +17,8 @@ class Training():
     def __init__(self, model, input_n, output_n,
                  clip_grad=None, device=device, n_epochs=25, log_step=100, 
                  lr=1e-04, use_scheduler=True, milestones=[4, 8, 12, 16],
-                 gamma=0.7, weight_decay=3e-04, use_wandb=False, save_and_plot=True):
+                 gamma=0.7, weight_decay=3e-04, use_wandb=False, 
+                 save_and_plot=True, path=None):
     
         self.model = model
         self.input_n = input_n
@@ -29,6 +30,7 @@ class Training():
         self.log_step = log_step
         self.use_wandb = use_wandb
         self.save_and_plot = save_and_plot
+        self.path = path
         if use_scheduler:
             self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=gamma)
         
@@ -115,9 +117,9 @@ class Training():
                 if running_loss/n < val_loss_best:
                     val_loss_best = running_loss/n
                     print(os.getcwd())
-                    torch.save(self.model.state_dict(), 'checkpoints/Best_checkpoint.pt')
+                    torch.save(self.model.state_dict(), self.path)
                     if self.use_wandb:
-                        wandb.run.log_artifact('checkpoints/Best_checkpoint.pt', name="Best_checkpoint")
+                        wandb.run.log_artifact(self.path, name="Best_checkpoint")
 
                 train_losses.append(train_loss[-1])
                 val_losses.append(val_loss[-1])
