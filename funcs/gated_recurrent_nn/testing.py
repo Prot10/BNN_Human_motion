@@ -1,6 +1,7 @@
 import time
 import torch
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -88,6 +89,7 @@ def get_ci(model, ckpt_path, test_loader,
     
     ci_batch = []
     mu_batch = []
+    dev_batch = []
     isin_batch = []
     
     dim_used = np.array([ 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
@@ -109,25 +111,28 @@ def get_ci(model, ckpt_path, test_loader,
             sequences_gt = batch[:, input_n:input_n + output_n, dim_used]
             sequences_gt = sequences_gt.view(sequences_gt.shape[0], sequences_gt.shape[1], 22, 3)
 
-            sequences, _, _ = model(sequences_train)
+            sequences, _ = model(sequences_train)
 
             m, c = build_ci(sequences.permute(0, 2, 1, 3, 4))
             mu_batch.append(m)
             ci_batch.append(c)
 
             dev = torch.linalg.vector_norm(m - sequences_gt, dim=-1).numpy(force=True)
+            dev_batch.append(dev)
+            
             isin = dev < c
             isin_batch.append(isin)
 
     mu = torch.concatenate(mu_batch, axis=0)
     ci = np.concatenate(ci_batch, axis=0)
+    dev = np.concatenate(dev_batch, axis=0)
     isin = np.concatenate(isin_batch, axis=0)
     
-    return mu, ci, isin
+    return mu, ci, dev, isin
 
 
 
-def plot_ci(ci, cmap='Blues'):
+def plot_ci(ci, cmap='RdPu'):
     
     joint_name = ["Hips", "RightUpLeg", "RightLeg", "RightFoot", "RightToeBase", "Site", "LeftUpLeg", "LeftLeg",
                 "LeftFoot",
@@ -152,3 +157,18 @@ def plot_ci(ci, cmap='Blues'):
         ylabel = 'Joint',
         xlabel = 'Time'
     );
+    
+    
+    
+def plot_loss_conf(dev, ci):
+    
+    d = {"dev": dev.flatten(),
+         "conf": ci.flatten()}
+    
+    df = pd.DataFrame.from_dict(data=d)
+
+    sns.histplot(data=df, x='conf', y='dev', log_scale=True,
+                 bins=30, cbar=True, cmap = 'RdPu',).set(
+                     title = 'Loss VS Confidence (GRNN)',
+                     xlabel = 'Confidence Interval range',
+                     ylabel = 'Loss (MPJPE)',); 
