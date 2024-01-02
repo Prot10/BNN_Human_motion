@@ -46,12 +46,36 @@ The project is organized into distinct components, each housed in its respective
 4. **Utility Functions:** `utils` directory contains utility functions for data loading, training, and visualization.
 5. **Analysis:** Jupyter notebook (`analysis.ipynb`) for further analysis and evaluation.
 
+## Models
+
+1. **Gated Recurrent Units (GRUs):** work by using gates to regulate the flow of information. They have two gates: the update gate, which decides how much past information to retain, and the reset gate, which determines how much past information to forget. This mechanism allows GRUs to maintain relevant information over long sequences and discard irrelevant data, making them effective for tasks like Human Pose Forecasting where understanding temporal dependencies is key.
+<div style="text-align: center">
+    <img src="data/Images/gated.png" alt="Image 1" width="400"/>
+</div>
+  
+2. **Transformers:** renowned for their effectiveness in handling sequential data, are particularly adept at capturing spatio-temporal correlations through Self-Attention mechanisms. This feature enables them to simultaneously process and relate different positions within a sequence, making them highly suitable for tasks like Human Pose Forecasting. By focusing on Spatio-Temporal (ST) Attention, transformers can intricately understand both spatial relationships and temporal dynamics, crucial for accurately predicting human movements in both space and time.
+<div style="text-align: center">
+    <img src="data/Images/transformer.png" alt="Image 1" width="180"/>
+</div>
+
+3. **Autoformer:** effectively utilizes correlations between distant time stamps to enhance its predictive accuracy in tasks like Human Pose Forecasting. By identifying and leveraging these correlations, the model can understand the intricate relationships and patterns that unfold over time. This approach is especially beneficial in scenarios where long-term dependencies and the interconnectedness of past and future movements are critical. The Autoformer’s ability to tap into these correlations allows for more precise and reliable predictions of human poses, even across extended time sequences.
+<div style="text-align: center">
+    <img src="data/Images/autoformer-2.png" alt="Image 1" width="400"/>
+</div>
+
+
 ## Findings
 
 - Comparative analysis shows that the Autoformer model is the most effective for Human Pose Forecasting.
 - Bayesian Neural Networks provide uncertainty estimation, crucial for understanding model confidence.
 - Training times are optimized through a hybrid approach in the Autoformer implementation.
 - Future work includes refining loss functions and improving computational efficiency.
+
+<div style="text-align: center">
+    <img src="data/Images/grnn_plot.png" alt="Image 1" width="300"/>
+    <img src="data/Images/transformer.jpg" alt="Image 1" width="300"/>
+    <img src="data/Images/loss_vs_uncertainty_autoformer.jpeg" alt="Image 1" width="300"/>
+</div>
 
 For detailed information, refer to the specific Jupyter notebooks and source code in each directory.
 
